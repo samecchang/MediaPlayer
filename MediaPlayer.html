@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Media Player</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a1a;
+      color: #fff;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .controls-bar {
+      padding: 12px 20px;
+      background: #2d2d2d;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid #3d3d3d;
+    }
+
+    .file-input-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .file-input-wrapper label {
+      font-size: 14px;
+      color: #aaa;
+    }
+
+    .file-input-wrapper input[type="file"] {
+      background: #3d3d3d;
+      color: #fff;
+      padding: 6px 12px;
+      border: 1px solid #4d4d4d;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .file-input-wrapper input[type="file"]::-webkit-file-upload-button {
+      background: #007acc;
+      color: #fff;
+      border: none;
+      padding: 4px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+
+    .file-input-wrapper.hidden {
+      display: none;
+    }
+
+    .media-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      position: relative;
+    }
+
+    video, audio {
+      cursor: pointer;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .placeholder {
+      text-align: center;
+      color: #666;
+      font-size: 18px;
+    }
+
+    .placeholder svg {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 20px;
+      opacity: 0.5;
+    }
+
+    .shortcuts-info {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(45, 45, 45, 0.9);
+      padding: 15px;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #aaa;
+      border: 1px solid #3d3d3d;
+      z-index: 1000;
+    }
+
+    .shortcuts-info h4 {
+      color: #fff;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    .shortcuts-info div {
+      margin: 4px 0;
+    }
+
+    .shortcuts-info kbd {
+      background: #4d4d4d;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: monospace;
+      margin-right: 5px;
+    }
+
+    .media-container.drag-over {
+      border: 3px dashed #007acc;
+    }
+  </style>
+</head>
+<body>
+  <div class="controls-bar">
+    <div class="file-input-wrapper" id="fileInputWrapper">
+      <label for="mediaFile">Select Media:</label>
+      <input type="file" id="mediaFile" accept="video/*,audio/*">
+    </div>
+  </div>
+
+  <div class="media-container" id="mediaContainer">
+    <div class="placeholder" id="placeholder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+        <line x1="7" y1="2" x2="7" y2="22"></line>
+        <line x1="17" y1="2" x2="17" y2="22"></line>
+        <line x1="2" y1="12" x2="22" y2="12"></line>
+        <line x1="2" y1="7" x2="7" y2="7"></line>
+        <line x1="2" y1="17" x2="7" y2="17"></line>
+        <line x1="17" y1="17" x2="22" y2="17"></line>
+        <line x1="17" y1="7" x2="22" y2="7"></line>
+      </svg>
+      <p>Select a media file to play</p>
+    </div>
+  </div>
+
+  <div class="shortcuts-info" id="shortcutsInfo">
+    <h4>Keyboard Shortcuts</h4>
+    <div><kbd>←</kbd> Back 10 seconds</div>
+    <div><kbd>→</kbd> Forward 30 seconds</div>
+    <div><kbd>↑</kbd> Volume Up</div>
+    <div><kbd>↓</kbd> Volume Down</div>
+    <div><kbd>Space</kbd> Pause/Resume</div>
+    <div><kbd>F</kbd> Toggle Fullscreen</div>
+  </div>
+
+  <script>
+    const mediaFileInput = document.getElementById('mediaFile');
+    const mediaContainer = document.getElementById('mediaContainer');
+    const placeholder = document.getElementById('placeholder');
+    const fileInputWrapper = document.getElementById('fileInputWrapper');
+    const shortcutsInfo = document.getElementById('shortcutsInfo');
+    
+    let mediaElement = null;
+    let lastClickTime = 0;
+
+    function fitMediaToContainer() {
+      if (!mediaElement) return;
+      
+      const container = mediaContainer;
+      const containerWidth = container.clientWidth;
+      const containerHeight = container.clientHeight;
+      const mediaWidth = mediaElement.videoWidth || mediaElement.offsetWidth;
+      const mediaHeight = mediaElement.videoHeight || mediaElement.offsetHeight;
+      
+      if (mediaWidth === 0 || mediaHeight === 0) return;
+      
+      const containerRatio = containerWidth / containerHeight;
+      const mediaRatio = mediaWidth / mediaHeight;
+      
+      if (mediaRatio > containerRatio) {
+        // Media is wider, fill width
+        mediaElement.style.width = containerWidth + 'px';
+        mediaElement.style.height = (containerWidth / mediaRatio) + 'px';
+      } else {
+        // Media is taller, fill height
+        mediaElement.style.height = containerHeight + 'px';
+        mediaElement.style.width = (containerHeight * mediaRatio) + 'px';
+      }
+    }
+
+    window.addEventListener('resize', function() {
+      if (mediaElement) {
+        fitMediaToContainer();
+      }
+    });
+
+    // Click on shortcuts info to toggle 2x/4x speed
+    shortcutsInfo.addEventListener('click', function() {
+      if (!mediaElement) return;
+      
+      if (mediaElement.playbackRate === 2) {
+        mediaElement.playbackRate = 4;
+      }
+    });
+
+    // File selection handler
+    mediaFileInput.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        loadMediaFile(file);
+      }
+    });
+
+    function setupMediaListeners() {
+      // Double click to toggle fullscreen
+      mediaElement.addEventListener('dblclick', function(e) {
+        toggleFullscreen();
+      });
+
+      // Load media and calculate size
+      mediaElement.addEventListener('loadedmetadata', function() {
+        mediaElement.style.display = 'block';
+        fitMediaToContainer();
+      });
+
+      // Hide shortcuts when playing, show when paused
+      mediaElement.addEventListener('play', function() {
+        document.querySelector('.shortcuts-info').style.display = 'none';
+      });
+
+      mediaElement.addEventListener('pause', function() {
+        document.querySelector('.shortcuts-info').style.display = 'block';
+      });
+
+      mediaElement.addEventListener('ended', function() {
+        document.querySelector('.shortcuts-info').style.display = 'block';
+      });
+
+      // Error handling
+      mediaElement.addEventListener('error', function() {
+        alert('Error loading media file');
+        placeholder.style.display = 'block';
+        mediaElement.style.display = 'none';
+        document.querySelector('.shortcuts-info').style.display = 'block';
+      });
+    }
+
+    // Drag and drop file support
+    mediaContainer.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      mediaContainer.classList.add('drag-over');
+    });
+
+    mediaContainer.addEventListener('dragleave', function(e) {
+      e.preventDefault();
+      mediaContainer.classList.remove('drag-over');
+    });
+
+    mediaContainer.addEventListener('drop', function(e) {
+      e.preventDefault();
+      mediaContainer.classList.remove('drag-over');
+      
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        loadMediaFile(file);
+      }
+    });
+
+    function loadMediaFile(file) {
+      // Remove existing media element
+      if (mediaElement) {
+        mediaElement.remove();
+        mediaElement = null;
+      }
+
+      // Determine file type
+      const fileType = file.type;
+      
+      // Create appropriate media element
+      if (fileType.startsWith('video/')) {
+        mediaElement = document.createElement('video');
+      } else if (fileType.startsWith('audio/')) {
+        mediaElement = document.createElement('audio');
+      } else {
+        alert('Please select a valid video or audio file');
+        return;
+      }
+
+      mediaElement.src = URL.createObjectURL(file);
+      mediaElement.controls = true;
+      mediaElement.style.display = 'none';
+      
+      // Set up media element
+      mediaContainer.appendChild(mediaElement);
+      placeholder.style.display = 'none';
+      mediaElement.style.display = 'block';
+      fileInputWrapper.classList.add('hidden');
+
+      // Set up event listeners
+      setupMediaListeners();
+      
+      // Auto-play
+      mediaElement.play().catch(err => console.log('Auto-play prevented:', err));
+    }
+
+    // Touch gestures
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+    let lastTapTime = 0;
+    let lastTapX = 0;
+    let lastTapY = 0;
+
+    mediaContainer.addEventListener('touchstart', function(e) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      touchStartTime = new Date().getTime();
+    }, { passive: true });
+
+    mediaContainer.addEventListener('touchend', function(e) {
+      if (!mediaElement) return;
+      
+      const touchEndX = e.changedTouches[0].clientX;
+      const touchEndY = e.changedTouches[0].clientY;
+      const touchEndTime = new Date().getTime();
+      
+      const deltaX = touchEndX - touchStartX;
+      const deltaY = touchEndY - touchStartY;
+      const deltaTime = touchEndTime - touchStartTime;
+      
+      const minSwipeDistance = 50;
+      const maxTapTime = 300;
+      const maxTapDistance = 10;
+      const doubleTapTime = 300;
+      const doubleTapDistance = 30;
+      
+      // Check for tap
+      if (deltaTime < maxTapTime && Math.abs(deltaX) < maxTapDistance && Math.abs(deltaY) < maxTapDistance) {
+        // Check for double tap
+        const timeSinceLastTap = touchEndTime - lastTapTime;
+        const distanceFromLastTap = Math.sqrt(
+          Math.pow(touchEndX - lastTapX, 2) + 
+          Math.pow(touchEndY - lastTapY, 2)
+        );
+        
+        if (timeSinceLastTap < doubleTapTime && distanceFromLastTap < doubleTapDistance) {
+          // Double tap detected - toggle fullscreen
+          toggleFullscreen();
+          lastTapTime = 0; // Reset to prevent triple tap
+          return;
+        }
+        
+        // Single tap - toggle play/pause
+        lastTapTime = touchEndTime;
+        lastTapX = touchEndX;
+        lastTapY = touchEndY;
+        togglePlayPause();
+        return;
+      }
+      
+      // Check for swipe
+      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        // Horizontal swipe
+        if (deltaX > minSwipeDistance) {
+          // Swipe right - forward 30 seconds
+          mediaElement.currentTime = Math.min(mediaElement.duration, mediaElement.currentTime + 30);
+        } else if (deltaX < -minSwipeDistance) {
+          // Swipe left - back 10 seconds
+          mediaElement.currentTime = Math.max(0, mediaElement.currentTime - 10);
+        }
+      } else {
+        // Vertical swipe
+        if (deltaY > minSwipeDistance) {
+          // Swipe down - volume down
+          mediaElement.volume = Math.max(0, mediaElement.volume - 0.1);
+          showVolumeIndicator();
+        } else if (deltaY < -minSwipeDistance) {
+          // Swipe up - volume up
+          mediaElement.volume = Math.min(1, mediaElement.volume + 0.1);
+          showVolumeIndicator();
+        }
+      }
+    }, { passive: true });
+
+    function togglePlayPause() {
+      if (!mediaElement) return;
+      
+      if (mediaElement.paused) {
+        mediaElement.play();
+      } else {
+        mediaElement.pause();
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!mediaElement) return;
+      
+      if (!document.fullscreenElement) {
+        mediaElement.requestFullscreen().catch(err => {
+          console.log('Fullscreen error:', err);
+        });
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+      if (!mediaElement) return;
+
+      switch(e.key) {
+        case 'ArrowLeft':
+          e.preventDefault();
+          mediaElement.currentTime = Math.max(0, mediaElement.currentTime - 10);
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          mediaElement.currentTime = Math.min(mediaElement.duration, mediaElement.currentTime + 30);
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          mediaElement.volume = Math.min(1, mediaElement.volume + 0.1);
+          showVolumeIndicator();
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          mediaElement.volume = Math.max(0, mediaElement.volume - 0.1);
+          showVolumeIndicator();
+          break;
+        case ' ':
+          e.preventDefault();
+          togglePlayPause();
+          break;
+        case 'f':
+        case 'F':
+          e.preventDefault();
+          toggleFullscreen();
+          break;
+      }
+    });
+
+    function showVolumeIndicator() {
+      // Create or update volume indicator
+      let indicator = document.getElementById('volumeIndicator');
+      if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'volumeIndicator';
+        indicator.style.cssText = `
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: rgba(0, 0, 0, 0.8);
+          color: white;
+          padding: 20px 30px;
+          border-radius: 8px;
+          font-size: 24px;
+          font-weight: bold;
+          z-index: 2000;
+          display: none;
+        `;
+        document.body.appendChild(indicator);
+      }
+
+      indicator.textContent = 'Volume: ' + Math.round(mediaElement.volume * 100) + '%';
+      indicator.style.display = 'block';
+      
+      // Hide after 1 second
+      clearTimeout(window.volumeTimeout);
+      window.volumeTimeout = setTimeout(() => {
+        indicator.style.display = 'none';
+      }, 1000);
+    }
+  </script>
+</body>
+</html>
